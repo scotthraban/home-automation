@@ -1,2 +1,1 @@
-# home-automation
-2- Descriptions, configurations, projects for my personal home automation
+Descriptions, configurations, projects for my personal home automation
