@@ -7,4 +7,4 @@ I no longer use this sensor, I have abandoned MySensors sensors, as I have found
 [Arduino sketch for temperature sensor](Dallas_DS18B20_Temperature_Sensor)
 
 ## References
- - [MySensors](https;//mysensors.org/build/temp)
+ - [MySensors](https://mysensors.org/build/temp)

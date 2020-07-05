@@ -7,4 +7,4 @@ I no longer use this sensor, I have abandoned MySensors sensors, as I have found
 [Arduino sketch for temperature and humidity sensor](DHT22TemperatureHumiditySensor)
 
 ## References
- - [MySensors](https;//mysensors.org/build/humidity)
+ - [MySensors](https://mysensors.org/build/humidity)
