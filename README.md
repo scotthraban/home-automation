@@ -4,4 +4,7 @@ A collection of different parts of the home automation solution that I have buil
 So this is really more for me than for anyone else, but if anything I put up here ends up being helpful to anyone else, that would be awesome.
 
 # Sensors
- - [Temperature Sensor](sensors/esp-temperature-sensor)
+ - [ESP8266 Temperature Sensor](sensors/esp-temperature-sensor)
+
+# Controllers
+ - [Arduino MySensors Furnance Controller (deprecated)](controllers/arduino-furnace-controller)
