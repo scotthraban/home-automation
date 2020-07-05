@@ -8,7 +8,7 @@ One valuable thing that I learned from this project, that I carried forward to t
 
 ## Software
 
-[Arduino sketch for Arduino Nano](FurnanceController)
+[Arduino sketch for Arduino Nano](FurnaceController)
 
 ## Wiring Schematic
 
