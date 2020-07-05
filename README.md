@@ -4,4 +4,4 @@ A collection of different parts of the home automation solution that I have buil
 So this is really more for me than for anyone else, but if anything I put up here ends up being helpful to anyone else, that would be awesome.
 
 # Sensors
- - [Temperature Sensor](temperature-sensor)
+ - [Temperature Sensor](sensors/esp-temperature-sensor)
