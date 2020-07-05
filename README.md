@@ -5,6 +5,11 @@ So this is really more for me than for anyone else, but if anything I put up her
 
 # Sensors
  - [ESP8266 Temperature Sensor](sensors/esp-temperature-sensor)
+ - [Arduino Temperature Sensor (deprecated)](sensors/arduino-temperature-sensor)
+ - [Arduino Temperature Humidity Sensor (deprecated)](sensors/arduino-temperature-humidity-sensor)
 
 # Controllers
  - [Arduino MySensors Furnance Controller (deprecated)](controllers/arduino-furnace-controller)
+
+# Gateway
+ - [Arduino MySensors Serial Gateway (deprecated)](openhab/arduino-serial-gateway)
