@@ -4,10 +4,12 @@
 #include <Adafruit_SSD1306.h>
 #include "SparkFun_Particle_Sensor_SN-GCJA5_Arduino_Library.h"
 
+#define BUTTON 3
+
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 
-#define DISPLAY_PERIOD 5000
+#define DISPLAY_PERIOD 7000
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
@@ -21,12 +23,16 @@ int sampleIndex = 0;
 
 int averagePm25[30];
 int averagePm10[30];
-int averageIndex;
+int averageIndex = 0;
 
+volatile bool buttonPressed = false;
 long displayStarted =  0;
-bool displayStopped = true; 
+bool displayStopped = true;
 
 void setup() {
+
+  pinMode(BUTTON, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(BUTTON), buttonLow, LOW);
   
   Wire.begin();
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
@@ -42,7 +48,16 @@ void setup() {
   }
 }
 
+void buttonLow() {
+  buttonPressed = true;
+}
+
 void loop() {
+  recordData();
+  doDisplay();
+}
+
+void recordData() {
   if (millis() > (sampleTaken + 1000)) {
     samplePm25[sampleIndex] = getPm25Aqi();
     samplePm10[sampleIndex] = getPm10Aqi();
@@ -58,8 +73,6 @@ void loop() {
 
     sampleTaken = millis();
   }
-
-  doDisplay();
 }
 
 int arrayAverage(int arr[], int len) {
@@ -85,9 +98,11 @@ void doDisplay() {
     stopDisplay();
   }
 
-  // TODO: Replace with button check...
-  if (millis() > (displayStarted + (DISPLAY_PERIOD * 2))) {
-    startDisplay();
+  if (buttonPressed) {
+    if (displayStopped) {
+      startDisplay();
+    } 
+    buttonPressed = false;
   }
 }
 
@@ -136,19 +151,6 @@ void stopDisplay() {
 
   displayStopped = true;
 }
-
-//void displayDebug(String msg) {
-//  display.clearDisplay();
-//  display.setTextSize(1);
-//  display.setTextColor(SSD1306_WHITE);
-//  display.setCursor(0, 0);
-//  display.cp437(true);
-//  display.write(msg.c_str());
-//  display.display();
-//  display.clearDisplay();
-//
-//  delay(1000);
-//}
 
 int getPm25Aqi() {
   return calculatePm25Aqi(airSensor.getPM2_5());
