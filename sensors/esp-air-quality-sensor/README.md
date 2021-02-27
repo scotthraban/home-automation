@@ -20,7 +20,9 @@ I used the [OSH Park](https://oshpark.com/) service to fabricate the board for t
 
 ## Project Box
 
-Coming...
+![Air Quality / Temperature Sensor Project Box](assets/project-box.png)
+
+Designed in Autodesk Fusion 360, available on [Thingiverse](https://www.thingiverse.com/thing:4777796).
 
 ## BOM
 
