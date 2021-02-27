@@ -7,6 +7,7 @@ So this is really more for me than for anyone else, but if anything I put up her
  - [ESP8266 Temperature Sensor](sensors/esp-temperature-sensor)
  - [Arduino Temperature Sensor (deprecated)](sensors/arduino-temperature-sensor)
  - [Arduino Temperature Humidity Sensor (deprecated)](sensors/arduino-temperature-humidity-sensor)
+ - [ESP8266 AQI and Temperature Sensor](sensors/esp-air-quality-sensor)
 
 # Controllers
  - [Arduino MySensors Furnance Controller (deprecated)](controllers/arduino-furnace-controller)
