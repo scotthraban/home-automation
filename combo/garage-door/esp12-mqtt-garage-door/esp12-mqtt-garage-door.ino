@@ -12,8 +12,8 @@
  * #define MQTT_CLIENT_ID "your-client-id"
  * #define MQTT_USERNAME "your-mqtt-username"
  * #define MQTT_PWD "your-mqtt-password
- * #define MQTT_SUBSCRIBE_TOPIC "your-mqtt-subscribe-topic"
- * #define MQTT_PUBLISH_TOPIC "your-mqtt-publish-topic"
+ * #define SENSOR_NAME "your-sensor-name"
+ * #define SENSOR_LOCATION_DESCRIPTION "Your Sensor Description"
  */
 #include "MyConfig.h"
  
@@ -56,16 +56,14 @@ void setup()
   startWifi();
  
   client.setServer(MQTT_SERVER, MQTT_PORT);
+  client.setKeepAlive((SEND_STATE_REFRESH_INTERVAL / 1000) * 2);
   client.setCallback(processMessage);
 }
  
 void loop()
 {
   if (!client.connected()) {
-    if (reconnect()) {
-      // (re)connect success, subscribe to topic, then loop again
-      client.subscribe(MQTT_SUBSCRIBE_TOPIC);
-    } else {
+    if (!reconnect()) {
       // (re)connect failure, sleep and try again later
       delay(5000);
     }
@@ -86,11 +84,17 @@ void sendState()
   
   if (isStateStable() && (lastSentState != latestState || isTimeToSendStateRefresh())) {
     if (latestState == DOOR_CLOSED) {
+      char stateTopic[64];
+      getStateTopic(stateTopic, sizeof(stateTopic));
+
       digitalWrite(LED_BUILTIN, LED_OFF);
-      client.publish(MQTT_PUBLISH_TOPIC, DOOR_CLOSED_PAYLOAD);
+      client.publish(stateTopic, DOOR_CLOSED_PAYLOAD);
     } else if (latestState == DOOR_OPEN) {
+      char stateTopic[64];
+      getStateTopic(stateTopic, sizeof(stateTopic));
+
       digitalWrite(LED_BUILTIN, LED_ON);
-      client.publish(MQTT_PUBLISH_TOPIC, DOOR_OPEN_PAYLOAD);
+      client.publish(stateTopic, DOOR_OPEN_PAYLOAD);
     }
 
     lastSentState = latestState;
@@ -129,7 +133,10 @@ bool isStateStable()
 
 void processMessage(char* topic, byte* payload, unsigned int length)
 {
-  if (strncmp(MQTT_SUBSCRIBE_TOPIC, topic, strlen(MQTT_SUBSCRIBE_TOPIC)) != 0) {
+  char commandTopic[64];
+  getCommandTopic(commandTopic, sizeof(commandTopic));
+
+  if (strncmp(commandTopic, topic, strlen(commandTopic)) != 0) {
     // this is not the topic you are looking for
     return;
   }
@@ -158,13 +165,35 @@ void toggleDoorState(int ledFinal)
   digitalWrite(LED_BUILTIN, ledFinal);
 }
 
-boolean reconnect()
-{
-#ifdef MQTT_USERNAME
-  return client.connect(MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD);
+boolean reconnect() {  
+  boolean success;
+
+  char topic[64];
+  char msg[256];
+  
+  getAvailabilityTopic(topic, sizeof(topic));
+
+  while (!client.connected()) {
+#ifdef MQTT_USERNAME    
+    success = client.connect(MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD, topic, 0, true, "offline");
 #else
-  return client.connect(MQTT_CLIENT_ID);
+    success = client.connect(MQTT_CLIENT_ID, topic, 0, true, "offline");
 #endif
+  }
+
+  if (success) {
+    getCommandTopic(topic, sizeof(topic));  
+    client.subscribe(topic);
+
+    getConfigTopic(topic, sizeof(topic));
+    getConfigMessage(msg, sizeof(msg));
+    client.publish(topic, msg, true);
+    
+    getAvailabilityTopic(topic, sizeof(topic));
+    client.publish(topic, "online", true);
+  }
+
+  return success;
 }
 
 void startWifi()
@@ -182,4 +211,35 @@ void startWifi()
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
   }
+}
+
+int getCommandTopic(char* dest, int n) {
+  return snprintf(dest, n, "iot/%s/command", SENSOR_NAME);
+}
+
+int getStateTopic(char* dest, int n) {
+  return snprintf(dest, n, "iot/%s/state", SENSOR_NAME);
+}
+
+int getAvailabilityTopic(char* dest, int n) {
+  return snprintf(dest, n, "iot/%s/availability", SENSOR_NAME);
+}
+
+int getConfigTopic(char* dest, int n) {
+  return snprintf(dest, n, "homeassistant/switch/%s/config", SENSOR_NAME);
+}
+
+int getConfigMessage(char* dest, int n) {
+  char commandTopic[64];
+  getCommandTopic(commandTopic, sizeof(commandTopic));
+  
+  char stateTopic[64];
+  getStateTopic(stateTopic, sizeof(stateTopic));
+  
+  char availabilityTopic[64];
+  getAvailabilityTopic(availabilityTopic, sizeof(availabilityTopic));
+
+  return snprintf(dest, n,
+            "{\"name\": \"%s\", \"command_topic\":\"%s\", \"state_topic\": \"%s\", \"availability_topic\": \"%s\"}",
+            SENSOR_LOCATION_DESCRIPTION, commandTopic, stateTopic, availabilityTopic);
 }
