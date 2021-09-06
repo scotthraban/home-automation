@@ -1,17 +1,19 @@
-#include <ESP8266WiFi.h>
-#include <PubSubClient.h>
+
+#include <HWiFi.h>
+#include <HMqtt.h>
 
 /*
  * Inside your MyConfig.h file, you will need to define the params to connect
  * to your Wifi and MQTT server:
- * 
+ *  
  * #define WIFI_SSID "Your SSID"
  * #define WIFI_PWD "Your-Password"
  * #define MQTT_SERVER "your.server.com"
  * #define MQTT_PORT your-mqtt-port
  * #define MQTT_CLIENT_ID "your-client-id"
  * #define MQTT_USERNAME "your-mqtt-username"
- * #define MQTT_PWD "your-mqtt-password
+ * #define MQTT_PASSWORD "your-mqtt-password
+ * #define MQTT_TLS if using TLS - note the cert config is required as well
  * #define SENSOR_NAME "your-sensor-name"
  * #define SENSOR_LOCATION_DESCRIPTION "Your Sensor Description"
  */
@@ -32,12 +34,13 @@
 #define LED_ON              LOW
 #define LED_OFF             HIGH
 
-WiFiClient espClient;
-PubSubClient client(espClient);
-
 int latestStates[NUM_READ_STATES];
 int lastSentState = -1;
 long lastStateSent = 0;
+
+HWiFi hWifi(WIFI_SSID, WIFI_PWD, MQTT_CLIENT_ID);
+HMqtt hMqtt(MQTT_SERVER, MQTT_PORT, true, (SEND_STATE_REFRESH_INTERVAL / 1000) * 2,
+            MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD);
 
 void setup()
 {
@@ -53,24 +56,18 @@ void setup()
     latestStates[i] = -1;
   }
 
-  startWifi();
- 
-  client.setServer(MQTT_SERVER, MQTT_PORT);
-  client.setKeepAlive((SEND_STATE_REFRESH_INTERVAL / 1000) * 2);
-  client.setCallback(processMessage);
-}
- 
-void loop()
-{
-  if (!client.connected()) {
-    if (!reconnect()) {
-      // (re)connect failure, sleep and try again later
-      delay(5000);
-    }
-  } else {
-    // connected - process messages, sleep a bit and go around again
-    client.loop();
+  hWifi.start();
 
+  char willTopic[64];
+  getAvailabilityTopic(willTopic, sizeof(willTopic));
+  hMqtt.setWill(willTopic, 0, true, "offline"); 
+
+  hMqtt.setMessageCallback(processMessage);
+  hMqtt.start();
+}
+
+void loop() {
+  if (hMqtt.ensureConnected(onConnect)) {
     readState();
     sendState();
 
@@ -88,13 +85,13 @@ void sendState()
       getStateTopic(stateTopic, sizeof(stateTopic));
 
       digitalWrite(LED_BUILTIN, LED_OFF);
-      client.publish(stateTopic, DOOR_CLOSED_PAYLOAD);
+      hMqtt.publish(stateTopic, DOOR_CLOSED_PAYLOAD);
     } else if (latestState == DOOR_OPEN) {
       char stateTopic[64];
       getStateTopic(stateTopic, sizeof(stateTopic));
 
       digitalWrite(LED_BUILTIN, LED_ON);
-      client.publish(stateTopic, DOOR_OPEN_PAYLOAD);
+      hMqtt.publish(stateTopic, DOOR_OPEN_PAYLOAD);
     }
 
     lastSentState = latestState;
@@ -131,7 +128,7 @@ bool isStateStable()
   return true;
 }
 
-void processMessage(char* topic, byte* payload, unsigned int length)
+void processMessage(const char* topic, byte* payload, unsigned int length)
 {
   char commandTopic[64];
   getCommandTopic(commandTopic, sizeof(commandTopic));
@@ -165,52 +162,19 @@ void toggleDoorState(int ledFinal)
   digitalWrite(LED_BUILTIN, ledFinal);
 }
 
-boolean reconnect() {  
-  boolean success;
-
+void onConnect() {
   char topic[64];
   char msg[256];
+
+  getCommandTopic(topic, sizeof(topic));
+  hMqtt.subscribe(topic);
+
+  getConfigTopic(topic, sizeof(topic));
+  getConfigMessage(msg, sizeof(msg));
+  hMqtt.publish(topic, msg, true);
   
   getAvailabilityTopic(topic, sizeof(topic));
-
-  while (!client.connected()) {
-#ifdef MQTT_USERNAME    
-    success = client.connect(MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD, topic, 0, true, "offline");
-#else
-    success = client.connect(MQTT_CLIENT_ID, topic, 0, true, "offline");
-#endif
-  }
-
-  if (success) {
-    getCommandTopic(topic, sizeof(topic));  
-    client.subscribe(topic);
-
-    getConfigTopic(topic, sizeof(topic));
-    getConfigMessage(msg, sizeof(msg));
-    client.publish(topic, msg, true);
-    
-    getAvailabilityTopic(topic, sizeof(topic));
-    client.publish(topic, "online", true);
-  }
-
-  return success;
-}
-
-void startWifi()
-{
-  delay(50);
-
-  // Ensure that ESP8266 only starts up in Station mode
-  WiFi.mode(WIFI_STA);
-
-  // Set the hostname, reusing the mqtt client id
-  WiFi.hostname(MQTT_CLIENT_ID);
-
-  WiFi.begin(WIFI_SSID, WIFI_PWD);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-  }
+  hMqtt.publish(topic, "online", true);
 }
 
 int getCommandTopic(char* dest, int n) {
@@ -241,5 +205,5 @@ int getConfigMessage(char* dest, int n) {
 
   return snprintf(dest, n,
             "{\"name\": \"%s\", \"command_topic\":\"%s\", \"state_topic\": \"%s\", \"availability_topic\": \"%s\"}",
-            SENSOR_LOCATION_DESCRIPTION, commandTopic, stateTopic, availabilityTopic);
+            SENSOR_DESCRIPTION, commandTopic, stateTopic, availabilityTopic);
 }

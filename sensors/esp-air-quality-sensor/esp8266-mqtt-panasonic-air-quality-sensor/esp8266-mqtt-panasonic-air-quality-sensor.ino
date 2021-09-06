@@ -1,9 +1,10 @@
 
-#include <ESP8266WiFi.h>
-#include <PubSubClient.h>
+#include <HWiFi.h>
+#include <HMqtt.h>
+#include <HOpenHab.h>
 
 #include <Wire.h>
-#include "SparkFun_Particle.h"
+#include "SparkFun_Particle_Sensor_SN-GCJA5_Arduino_Library.h"
 
 #include <DallasTemperature.h>
 #include <OneWire.h>
@@ -18,7 +19,7 @@
  * #define MQTT_PORT your-mqtt-port
  * #define MQTT_CLIENT_ID "your-client-id"
  * #define MQTT_USERNAME "your-mqtt-username"
- * #define MQTT_PWD "your-mqtt-password
+ * #define MQTT_PASSWORD "your-mqtt-password
  * #define SENSOR_SUB_NAME "your-sensor-name"
  * #define SENSOR_LOCATION_DESCRIPTION "Your Sensor Description"
  */
@@ -41,13 +42,14 @@
 #define TEMP_TYPE "Temperature"
 #define TEMP_DESC "Temperature"
 
-WiFiClient espClient;
-PubSubClient client(espClient);
-
 SFE_PARTICLE_SENSOR aqiSensor;
 
 OneWire oneWire(ONE_WIRE_PIN);
 DallasTemperature sensors(&oneWire);
+
+HWiFi hWifi(WIFI_SSID, WIFI_PWD, MQTT_CLIENT_ID);
+HMqtt hMqtt(MQTT_SERVER, MQTT_PORT, true, (MESSAGE_INTERVAL / 1000) * 2,
+            MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD);
 
 long aqiReadingTaken = 0;
 int aqiReadings[AQI_READINGS_TO_AVERAGE];
@@ -66,19 +68,17 @@ void setup()
 
   sensors.begin();
 
-  startWifi();
- 
-  client.setServer(MQTT_SERVER, MQTT_PORT);
-  client.setKeepAlive((MESSAGE_INTERVAL / 1000) * 2);
-  client.setBufferSize(512);
+  hWifi.start();
+
+  char willTopic[64];
+  getAvailabilityTopic(willTopic, sizeof(willTopic));
+  hMqtt.setWill(willTopic, 0, true, "offline"); 
+
+  hMqtt.start();
 }
  
 void loop()
 {
-  if (!client.connected()) {
-    reconnect();
-  }
-
   long now = millis();
 
   if (now > (aqiReadingTaken + AQI_READING_INTERVAL)) {
@@ -87,7 +87,7 @@ void loop()
     aqiReadingTaken = now;
   }
 
-  if (now > (lastMsgSent + MESSAGE_INTERVAL)) {
+  if (now > (lastMsgSent + MESSAGE_INTERVAL) && hMqtt.ensureConnected(onConnect)) {
 
     sensors.requestTemperatures();
     float temperature = static_cast<float>(static_cast<int>(
@@ -96,7 +96,7 @@ void loop()
       char tempStateTopic[64];
       getTempStateTopic(tempStateTopic, sizeof(tempStateTopic));
       
-      client.publish(tempStateTopic, String(temperature).c_str());
+      hMqtt.publish(tempStateTopic, String(temperature).c_str());
       lastMsgSent = now;
     }
 
@@ -105,7 +105,7 @@ void loop()
       char aqiStateTopic[64];
       getAqiStateTopic(aqiStateTopic, sizeof(aqiStateTopic));
       
-      client.publish(aqiStateTopic, String(aqiAverage).c_str());
+      hMqtt.publish(aqiStateTopic, String(aqiAverage).c_str());
       lastMsgSent = now;
     }
   }
@@ -114,6 +114,24 @@ void loop()
   if (millisUntilNextReading > 0) {
     delay(millisUntilNextReading);
   }
+}
+
+void onConnect() {
+  char topic[64];
+  char msg[256];
+  
+  getAvailabilityTopic(topic, sizeof(topic));
+
+  getTempConfigTopic(topic, sizeof(topic));
+  getTempConfigMessage(msg, sizeof(msg));
+  hMqtt.publish(topic, msg, true);
+  
+  getAqiConfigTopic(topic, sizeof(topic));
+  getAqiConfigMessage(msg, sizeof(msg));
+  hMqtt.publish(topic, msg, true);
+
+  getAvailabilityTopic(topic, sizeof(topic));
+  hMqtt.publish(topic, "online", true);
 }
 
 int arrayAverage(int arr[], int len) {
@@ -177,34 +195,24 @@ int calculateAqi(float concI, float concL, float concH, int aqiL, int aqiH) {
   return (((aqiH - aqiL) / (concH - concL)) * (concI - concL)) + aqiL;
 }
 
-void reconnect() {
-  char topic[64];
-  char msg[256];
-  
-  getAvailabilityTopic(topic, sizeof(topic));
-
-  while (!client.connected()) {
-#ifdef MQTT_USERNAME    
-    client.connect(MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD, topic, 0, true, "offline");
-#else
-    client.connect(MQTT_CLIENT_ID, topic, 0, true, "offline");
-#endif
-  }
-
-  getTempConfigTopic(topic, sizeof(topic));
-  getTempConfigMessage(msg, sizeof(msg));
-  client.publish(topic, msg, true);
-  
-  getAqiConfigTopic(topic, sizeof(topic));
-  getAqiConfigMessage(msg, sizeof(msg));
-  client.publish(topic, msg, true);
-
-  getAvailabilityTopic(topic, sizeof(topic));
-  client.publish(topic, "online", true);
+int getAvailabilityTopic(char* dest, int n) {
+  char name[64];
+  getAvailabilityName(name, sizeof(name));
+  return getAvailabilityTopic(dest, n, name);
 }
 
-int getAvailabilityTopic(char* dest, int n) {
-  return snprintf(dest, n, "iot/%s%s%sCombo/availability", SENSOR_SUB_NAME, AQI_TYPE, TEMP_TYPE);
+int getAqiStateTopic(char* dest, int n) {
+  return getMyStateTopic(dest, n, AQI_TYPE);
+}
+
+int getTempStateTopic(char* dest, int n) {
+  return getMyStateTopic(dest, n, TEMP_TYPE);
+}
+
+int getMyStateTopic(char* dest, int n, const char* type) {
+  char name[64];
+  getStateName(name, sizeof(name), type);
+  return getStateTopic(dest, n, name);
 }
 
 int getAqiConfigTopic(char* dest, int n) {
@@ -216,7 +224,9 @@ int getTempConfigTopic(char* dest, int n) {
 }
 
 int getConfigTopic(char* dest, int n, const char* type) {
-  return snprintf(dest, n, "homeassistant/sensor/%s%s/config", SENSOR_SUB_NAME, type);
+  char name[64];
+  getStateName(name, sizeof(name), type);
+  return getSensorConfigTopic(dest, n, name);
 }
 
 int getAqiConfigMessage(char* dest, int n) {
@@ -227,45 +237,24 @@ int getTempConfigMessage(char* dest, int n) {
   return getConfigMessage(dest, n, TEMP_DESC, TEMP_TYPE, "\"unit_of_measurement\": \"°F\"");
 }
 
-int getConfigMessage(char* dest, int n, const char* typeDesc, const char* type, const char* typeSpecific) {
-  char availabilityTopic[64];
-  getAvailabilityTopic(availabilityTopic, sizeof(availabilityTopic));
+int getConfigMessage(char* dest, int n, const char* description, const char* type, const char* extra) {
 
-  char stateTopic[64];
-  getStateTopic(stateTopic, sizeof(stateTopic), type);
+  char availabilityName[64];
+  getAvailabilityName(availabilityName, sizeof(availabilityName));
+
+  char stateName[64];
+  getStateName(stateName, sizeof(stateName), type);
+
+  char fullDescription[64];
+  snprintf(fullDescription, sizeof(fullDescription), "%s %s", SENSOR_LOCATION_DESCRIPTION, description);
   
-  return snprintf(dest, n,
-            "{\"name\": \"%s %s\", \"state_topic\": \"%s\", \"availability_topic\": \"%s\", %s}",
-            SENSOR_LOCATION_DESCRIPTION, typeDesc, stateTopic, availabilityTopic, typeSpecific);
+  getSensorConfigMessage(dest, n, fullDescription, availabilityName, stateName, extra);
 }
 
-int getAqiStateTopic(char* dest, int n) {
-  return getStateTopic(dest, n, AQI_TYPE);
+int getStateName(char* dest, int n, const char* type) {
+  return snprintf(dest, n, "%s%s", SENSOR_SUB_NAME, type);
 }
 
-int getTempStateTopic(char* dest, int n) {
-    return getStateTopic(dest, n, TEMP_TYPE);
-}
-
-int getStateTopic(char* dest, int n, const char* type) {
-  return snprintf(dest, n, "iot/%s%s/state", SENSOR_SUB_NAME, type);
-}
-
-void startWifi() {
-  delay(50);
-
-  // Ensure that ESP8266 only starts up in Station mode
-  WiFi.mode(WIFI_STA);
-
-  // Save some power, produce less corrupting heat
-  WiFi.setSleepMode(WIFI_LIGHT_SLEEP);
-
-  // Set the hostname, reusing the mqtt client id
-  WiFi.hostname(MQTT_CLIENT_ID);
-
-  WiFi.begin(WIFI_SSID, WIFI_PWD);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-  }
+int getAvailabilityName(char* dest, int n) {
+  return snprintf(dest, n, "%s%s%sCombo", SENSOR_SUB_NAME, AQI_TYPE, TEMP_TYPE);
 }
