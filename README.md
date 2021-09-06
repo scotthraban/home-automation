@@ -14,3 +14,6 @@ So this is really more for me than for anyone else, but if anything I put up her
 
 # Gateway
  - [Arduino MySensors Serial Gateway (deprecated)](openhab/arduino-serial-gateway)
+
+# External Data Sources
+ - [PurpleAir to openHAB over MQTT(purple-air)
