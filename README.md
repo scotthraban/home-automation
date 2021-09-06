@@ -17,3 +17,7 @@ So this is really more for me than for anyone else, but if anything I put up her
 
 # External Data Sources
  - [PurpleAir to openHAB over MQTT(purple-air)
+ 
+# Notification / Alerting
+ - [Telegram Bot](telegram-bot)
+ 
