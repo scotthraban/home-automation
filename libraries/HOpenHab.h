@@ -3,6 +3,8 @@
 
 int getAvailabilityTopic(char* dest, int n, const char* name);
 
+int getCommandTopic(char* dest, int n, const char* name);
+
 int getStateTopic(char* dest, int n, const char* name);
 
 int getSensorConfigTopic(char* dest, int n, const char* name);
