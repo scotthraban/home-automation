@@ -16,7 +16,7 @@ So this is really more for me than for anyone else, but if anything I put up her
  - [Arduino MySensors Serial Gateway (deprecated)](openhab/arduino-serial-gateway)
 
 # External Data Sources
- - [PurpleAir to openHAB over MQTT(purple-air)
+ - [PurpleAir to openHAB over MQTT](purple-air)
  
 # Notification / Alerting
  - [Telegram Bot](telegram-bot)
