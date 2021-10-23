@@ -38,7 +38,7 @@ void HMqtt::setWill(const char* topic, int qos, bool retain, const char* message
 }
 
 void HMqtt::setMessageCallback(std::function<void(const char*, uint8_t*, unsigned int)> messageCallback) {
-    _messageCallback = _messageCallback;
+    _messageCallback = messageCallback;
 }
     
 void HMqtt::start() {
