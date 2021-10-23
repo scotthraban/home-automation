@@ -1,6 +1,7 @@
 
 #include <HWiFi.h>
 #include <HMqtt.h>
+#include <HOpenHab.h>
 
 /*
  * Inside your MyConfig.h file, you will need to define the params to connect
@@ -178,32 +179,21 @@ void onConnect() {
 }
 
 int getCommandTopic(char* dest, int n) {
-  return snprintf(dest, n, "iot/%s/command", SENSOR_NAME);
+  return getCommandTopic(dest, n, SENSOR_NAME);
 }
 
 int getStateTopic(char* dest, int n) {
-  return snprintf(dest, n, "iot/%s/state", SENSOR_NAME);
+  return getStateTopic(dest, n, SENSOR_NAME);
 }
 
 int getAvailabilityTopic(char* dest, int n) {
-  return snprintf(dest, n, "iot/%s/availability", SENSOR_NAME);
+  return getAvailabilityTopic(dest, n, SENSOR_NAME);
 }
 
 int getConfigTopic(char* dest, int n) {
-  return snprintf(dest, n, "homeassistant/switch/%s/config", SENSOR_NAME);
+  return getSwitchConfigTopic(dest, n, SENSOR_NAME);
 }
 
 int getConfigMessage(char* dest, int n) {
-  char commandTopic[64];
-  getCommandTopic(commandTopic, sizeof(commandTopic));
-  
-  char stateTopic[64];
-  getStateTopic(stateTopic, sizeof(stateTopic));
-  
-  char availabilityTopic[64];
-  getAvailabilityTopic(availabilityTopic, sizeof(availabilityTopic));
-
-  return snprintf(dest, n,
-            "{\"name\": \"%s\", \"command_topic\":\"%s\", \"state_topic\": \"%s\", \"availability_topic\": \"%s\"}",
-            SENSOR_DESCRIPTION, commandTopic, stateTopic, availabilityTopic);
+  return getSwitchConfigMessage(dest, n, SENSOR_DESCRIPTION, SENSOR_NAME, SENSOR_NAME, SENSOR_NAME, NULL);
 }
