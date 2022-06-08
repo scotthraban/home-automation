@@ -1,0 +1,12 @@
+[Unit]
+Description=TTS Service
+After=pulseaudio.service
+
+[Service]
+Type=simple
+ExecStart=python tts-server.py
+WorkingDirectory=/home/musicadmin/tts
+
+[Install]
+WantedBy=default.target
+
