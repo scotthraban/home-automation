@@ -3,6 +3,7 @@ import sys
 import traceback
 import json
 import time
+import datetime
 import requests
 import aqi
 import paho.mqtt.client as mqtt
@@ -15,19 +16,34 @@ def onConnect(client, userdata, flags, rc):
     CONNECTED = True
 
 
-def fetch(id) :
-    r = requests.get("https://www.purpleair.com/json?show=" + id, timeout = 5)
+def fetch(group_id):
+    api_key = os.getenv("PURPLE_AIR_API_KEY")
+
+    r = requests.get(
+        "https://api.purpleair.com/v1/groups/{}/members".format(group_id),
+        params = { "fields" : "name,pm2.5,temperature,humidity,last_seen" },
+        headers = { "X-API-Key" : api_key },
+        timeout = 5)
 
     r.raise_for_status()
 
-    data = json.loads(r.text)["results"][0]
-    paName = data["Label"]
-    paLabel = data["Label"].replace(" ", "_").replace("/", "_").replace("-", "_").replace("(", "").replace(")", "")
-    pm25 = json.loads(data["Stats"])["v1"]
-    paAqi = float(aqi.to_iaqi(aqi.POLLUTANT_PM25, pm25, algo=aqi.ALGO_EPA))
-    paTemp = float(data["temp_f"])
-    paHumidity = float(data["humidity"])
-    return (paName, paLabel, paAqi, paTemp, paHumidity)
+    datas = json.loads(r.text)["data"]
+
+    paData = []
+    for data in datas:
+        paId = data[0]
+        paName = data[1]
+        paLabel = data[1].replace(" ", "_").replace("/", "_").replace("-", "_").replace("(", "").replace(")", "")
+        pm25 = data[2]
+        paAqi = float(aqi.to_iaqi(aqi.POLLUTANT_PM25, pm25, algo=aqi.ALGO_EPA))
+        paTemp = float(data[3])
+        paHumidity = float(data[4])
+        paData.append((paId, paName, paLabel, paAqi, paTemp, paHumidity))
+        if DEBUG or datetime.datetime.timestamp(datetime.datetime.now()) - data[5] > 86400:
+            print("Sensor id {} last seen at {}"
+                .format(paId, datetime.datetime.fromtimestamp(data[5])))
+
+    return paData
 
 
 def publishMeasurement(client, id, name, label, unit, value):
@@ -64,55 +80,60 @@ def publishMeasurement(client, id, name, label, unit, value):
         info.wait_for_publish()
 
 
-def publish(client, id, data):
-    paName, paLabel, paAqi, paTemp, paHumidity = data
+def publish(client, data):
+    paId, paName, paLabel, paAqi, paTemp, paHumidity = data
 
-    publishMeasurement(client, id, paName + " AQI", paLabel + "_Aqi", "PM2.5", paAqi)
+    publishMeasurement(client, paId, paName + " AQI", paLabel + "_Aqi", "PM2.5", paAqi)
 
-    publishMeasurement(client, id, paName + " Temperature", paLabel + "_Temperature", "°F", paTemp)
+    publishMeasurement(client, paId, paName + " Temperature", paLabel + "_Temperature", "°F", paTemp)
 
-    publishMeasurement(client, id, paName + " Humidity", paLabel + "_Humidity", None, paHumidity)
+    publishMeasurement(client, paId, paName + " Humidity", paLabel + "_Humidity", None, paHumidity)
 
 
-def fetchAndPublish(client, id):
+def fetchAndPublish(client, group_id):
     try:
-        data = fetch(id)
-        publish(client, id, data)
+        datas = fetch(group_id)
+        for data in datas:
+            publish(client, data)
     except:
-        print("Error for id " + id);
+        traceback.print_exc()
+        print("Error for group id " + group_id)
 
 
 def fetchAndPublishAll(client):
     f = open("etc/ids.json", "r")
-    ids = json.loads(f.read())
+    group_ids = json.loads(f.read())
     f.close()
 
-    for id in ids:
-        fetchAndPublish(client, id)
+    for group_id in group_ids:
+        fetchAndPublish(client, group_id)
 
 try:
 
     if (os.getenv("DEBUG")):
         DEBUG = True
 
-    client = mqtt.Client(client_id="purple-air-to-openhab")
-    client.username_pw_set(os.getenv("PURPLE_AIR_MQTT_USERNAME"), os.getenv("PURPLE_AIR_MQTT_PASSWORD"))
+    client = None
+    if not DEBUG:
+        client = mqtt.Client(client_id="purple-air-to-openhab")
+        client.username_pw_set(os.getenv("PURPLE_AIR_MQTT_USERNAME"), os.getenv("PURPLE_AIR_MQTT_PASSWORD"))
 
-    client.on_connect = onConnect
+        client.on_connect = onConnect
 
-    client.connect("mosquitto")
+        client.connect("mosquitto")
 
-    client.loop_start()
+        client.loop_start()
 
-    start = time.mktime(time.localtime())
+        start = time.mktime(time.localtime())
 
-    while not CONNECTED and (time.mktime(time.localtime()) - start) < 10.0:
-        time.sleep(0.250)
+        while not CONNECTED and (time.mktime(time.localtime()) - start) < 10.0:
+            time.sleep(0.250)
 
     fetchAndPublishAll(client)
 
-    client.loop_stop()
-    client.disconnect()
+    if not DEBUG:
+        client.loop_stop()
+        client.disconnect()
 except:
     traceback.print_exc()
     sys.exit(-1)
