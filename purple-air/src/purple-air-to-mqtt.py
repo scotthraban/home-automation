@@ -27,21 +27,23 @@ def fetch(group_id):
 
     r.raise_for_status()
 
-    datas = json.loads(r.text)["data"]
+    response = json.loads(r.text)
+    fields = response["fields"]
+    datas = response["data"]
 
     paData = []
     for data in datas:
-        paId = data[0]
-        paName = data[1]
-        paLabel = data[1].replace(" ", "_").replace("/", "_").replace("-", "_").replace("(", "").replace(")", "")
-        pm25 = data[2]
+        paId = data[fields.index("sensor_index")]
+        paName = data[fields.index("name")]
+        paLabel = data[fields.index("name")].replace(" ", "_").replace("/", "_").replace("-", "_").replace("(", "").replace(")", "")
+        pm25 = data[fields.index("pm2.5")]
         paAqi = float(aqi.to_iaqi(aqi.POLLUTANT_PM25, pm25, algo=aqi.ALGO_EPA))
-        paTemp = float(data[3])
-        paHumidity = float(data[4])
+        paTemp = float(data[fields.index("temperature")])
+        paHumidity = float(data[fields.index("humidity")])
         paData.append((paId, paName, paLabel, paAqi, paTemp, paHumidity))
-        if DEBUG or datetime.datetime.timestamp(datetime.datetime.now()) - data[5] > 86400:
+        if DEBUG or datetime.datetime.timestamp(datetime.datetime.now()) - data[fields.index("last_seen")] > 86400:
             print("Sensor id {} last seen at {}"
-                .format(paId, datetime.datetime.fromtimestamp(data[5])))
+                .format(paId, datetime.datetime.fromtimestamp(data[fields.index("last_seen")])))
 
     return paData
 
