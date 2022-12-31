@@ -94,12 +94,17 @@ def publish(client, data):
 
 def fetchAndPublish(client, group_id):
     try:
-        datas = fetch(group_id)
+        try:
+            datas = fetch(group_id)
+        except requests.ConnectTimeout:
+            print("Timeout error for group id " + group_id + ", retrying...")
+            datas = fetch(group_id)
+
         for data in datas:
             publish(client, data)
     except:
-        traceback.print_exc()
         print("Error for group id " + group_id)
+        raise
 
 
 def fetchAndPublishAll(client):
