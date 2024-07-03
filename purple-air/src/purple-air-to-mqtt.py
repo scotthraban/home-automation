@@ -48,17 +48,22 @@ def fetch(group_id):
     return paData
 
 
-def publishMeasurement(client, id, name, label, unit, value):
+def publishMeasurement(client, id, name, label, type, capitalizedType, unit, value):
 
-    config_topic = "homeassistant/sensor/" + label + "/config"
+    topic_id = label + "_" + type.capitalize()
 
-    state_topic = "openhab/in/" + label + "/state"
+    config_topic = "homeassistant/sensor/" + topic_id + "/config"
 
-    availability_topic = "openhab/in/" + label + "/status"
+    state_topic = "openhab/in/" + topic_id + "/state"
 
-    config = { "name": name,
+    availability_topic = "openhab/in/" + topic_id + "/status"
+
+    config = { "name": name + " " + capitalizedType,
                "state_topic": state_topic,
-               "availability_topic": availability_topic
+               "availability_topic": availability_topic,
+               "unique_id": "pa_" + str(id) + "_" + type,
+               "device_class": type,
+               "expire_after" : 3600
              }
     if (unit):
         config["unit_of_measurement"] = unit
@@ -85,11 +90,11 @@ def publishMeasurement(client, id, name, label, unit, value):
 def publish(client, data):
     paId, paName, paLabel, paAqi, paTemp, paHumidity = data
 
-    publishMeasurement(client, paId, paName + " AQI", paLabel + "_Aqi", "PM2.5", paAqi)
+    publishMeasurement(client, paId, paName, paLabel, "aqi", "AQI", None, paAqi)
 
-    publishMeasurement(client, paId, paName + " Temperature", paLabel + "_Temperature", "°F", paTemp)
+    publishMeasurement(client, paId, paName, paLabel, "temperature", "Temperature", "°F", paTemp)
 
-    publishMeasurement(client, paId, paName + " Humidity", paLabel + "_Humidity", None, paHumidity)
+    publishMeasurement(client, paId, paName, paLabel, "humidity", "Humidity", "%", paHumidity)
 
 
 def fetchAndPublish(client, group_id):
