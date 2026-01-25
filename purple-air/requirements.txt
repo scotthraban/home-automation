@@ -1,4 +1,4 @@
 wheel == 0.38.4
-requests == 2.32.0
+requests == 2.32.4
 python-aqi == 0.6.1
 paho.mqtt == 1.6.1
