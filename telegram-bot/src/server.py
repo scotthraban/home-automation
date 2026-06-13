@@ -14,6 +14,12 @@ class SendTelegramHandler(BaseHTTPRequestHandler):
     _token = None
     _channels = None
 
+    def do_GET(self):
+        ctx = os.getenv("CONTEXT_PATH")
+        {
+            ctx + "/ping": self.handle_get_ping
+        }.get(self.path, self.not_found)()
+
     def do_POST(self):
         ctx = os.getenv("CONTEXT_PATH")
         {
@@ -24,6 +30,13 @@ class SendTelegramHandler(BaseHTTPRequestHandler):
         self.send_response(404, "Not Found")
         self.send_header("Content-Length", 0)
         self.end_headers()
+
+    def handle_get_ping(self):
+        self.send_response(200, "OK")
+        self.send_header("Content-type", "text/plain")
+        self.send_header("Content-Length", len("OK"))
+        self.end_headers()
+        self.wfile.write("OK".encode())
 
     def handle_post_message(self):
 
