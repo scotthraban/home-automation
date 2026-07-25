@@ -3,6 +3,7 @@ import sys
 import traceback
 import json
 import time
+import datetime
 import requests
 import aqi
 import paho.mqtt.client as mqtt
@@ -15,32 +16,54 @@ def onConnect(client, userdata, flags, rc):
     CONNECTED = True
 
 
-def fetch(id) :
-    r = requests.get("https://www.purpleair.com/json?show=" + id, timeout = 5)
+def fetch(group_id):
+    api_key = os.getenv("PURPLE_AIR_API_KEY")
+
+    r = requests.get(
+        "https://api.purpleair.com/v1/groups/{}/members".format(group_id),
+        params = { "fields" : "name,pm2.5,temperature,humidity,last_seen" },
+        headers = { "X-API-Key" : api_key },
+        timeout = 5)
 
     r.raise_for_status()
 
-    data = json.loads(r.text)["results"][0]
-    paName = data["Label"]
-    paLabel = data["Label"].replace(" ", "_").replace("/", "_").replace("-", "_").replace("(", "").replace(")", "")
-    pm25 = json.loads(data["Stats"])["v1"]
-    paAqi = float(aqi.to_iaqi(aqi.POLLUTANT_PM25, pm25, algo=aqi.ALGO_EPA))
-    paTemp = float(data["temp_f"])
-    paHumidity = float(data["humidity"])
-    return (paName, paLabel, paAqi, paTemp, paHumidity)
+    response = json.loads(r.text)
+    fields = response["fields"]
+    datas = response["data"]
+
+    paData = []
+    for data in datas:
+        paId = data[fields.index("sensor_index")]
+        paName = data[fields.index("name")]
+        paLabel = data[fields.index("name")].replace(" ", "_").replace("/", "_").replace("-", "_").replace("(", "").replace(")", "")
+        pm25 = data[fields.index("pm2.5")]
+        paAqi = float(aqi.to_iaqi(aqi.POLLUTANT_PM25, pm25, algo=aqi.ALGO_EPA))
+        paTemp = float(data[fields.index("temperature")])
+        paHumidity = float(data[fields.index("humidity")])
+        paData.append((paId, paName, paLabel, paAqi, paTemp, paHumidity))
+        if DEBUG or datetime.datetime.timestamp(datetime.datetime.now()) - data[fields.index("last_seen")] > 86400:
+            print("Sensor id {} last seen at {}"
+                .format(paId, datetime.datetime.fromtimestamp(data[fields.index("last_seen")])))
+
+    return paData
 
 
-def publishMeasurement(client, id, name, label, unit, value):
+def publishMeasurement(client, id, name, label, type, capitalizedType, unit, value):
 
-    config_topic = "homeassistant/sensor/" + label + "/config"
+    topic_id = label + "_" + type.capitalize()
 
-    state_topic = "openhab/in/" + label + "/state"
+    config_topic = "homeassistant/sensor/" + topic_id + "/config"
 
-    availability_topic = "openhab/in/" + label + "/status"
+    state_topic = "openhab/in/" + topic_id + "/state"
 
-    config = { "name": name,
+    availability_topic = "openhab/in/" + topic_id + "/status"
+
+    config = { "name": name + " " + capitalizedType,
                "state_topic": state_topic,
-               "availability_topic": availability_topic
+               "availability_topic": availability_topic,
+               "unique_id": "pa_" + str(id) + "_" + type,
+               "device_class": type,
+               "expire_after" : 3600
              }
     if (unit):
         config["unit_of_measurement"] = unit
@@ -64,55 +87,65 @@ def publishMeasurement(client, id, name, label, unit, value):
         info.wait_for_publish()
 
 
-def publish(client, id, data):
-    paName, paLabel, paAqi, paTemp, paHumidity = data
+def publish(client, data):
+    paId, paName, paLabel, paAqi, paTemp, paHumidity = data
 
-    publishMeasurement(client, id, paName + " AQI", paLabel + "_Aqi", "PM2.5", paAqi)
+    publishMeasurement(client, paId, paName, paLabel, "aqi", "AQI", None, paAqi)
 
-    publishMeasurement(client, id, paName + " Temperature", paLabel + "_Temperature", "°F", paTemp)
+    publishMeasurement(client, paId, paName, paLabel, "temperature", "Temperature", "°F", paTemp)
 
-    publishMeasurement(client, id, paName + " Humidity", paLabel + "_Humidity", None, paHumidity)
+    publishMeasurement(client, paId, paName, paLabel, "humidity", "Humidity", "%", paHumidity)
 
 
-def fetchAndPublish(client, id):
+def fetchAndPublish(client, group_id):
     try:
-        data = fetch(id)
-        publish(client, id, data)
+        try:
+            datas = fetch(group_id)
+        except requests.ConnectTimeout:
+            print("Timeout error for group id " + group_id + ", retrying...")
+            datas = fetch(group_id)
+
+        for data in datas:
+            publish(client, data)
     except:
-        print("Error for id " + id);
+        print("Error for group id " + group_id)
+        raise
 
 
 def fetchAndPublishAll(client):
     f = open("etc/ids.json", "r")
-    ids = json.loads(f.read())
+    group_ids = json.loads(f.read())
     f.close()
 
-    for id in ids:
-        fetchAndPublish(client, id)
+    for group_id in group_ids:
+        fetchAndPublish(client, group_id)
 
 try:
 
     if (os.getenv("DEBUG")):
         DEBUG = True
 
-    client = mqtt.Client(client_id="purple-air-to-openhab")
-    client.username_pw_set(os.getenv("PURPLE_AIR_MQTT_USERNAME"), os.getenv("PURPLE_AIR_MQTT_PASSWORD"))
+    client = None
+    if not DEBUG:
+        client = mqtt.Client(client_id="purple-air-to-openhab")
+        client.username_pw_set(os.getenv("PURPLE_AIR_MQTT_USERNAME"), os.getenv("PURPLE_AIR_MQTT_PASSWORD"))
 
-    client.on_connect = onConnect
+        client.on_connect = onConnect
 
-    client.connect("mosquitto")
+        client.connect("mosquitto")
 
-    client.loop_start()
+        client.loop_start()
 
-    start = time.mktime(time.localtime())
+        start = time.mktime(time.localtime())
 
-    while not CONNECTED and (time.mktime(time.localtime()) - start) < 10.0:
-        time.sleep(0.250)
+        while not CONNECTED and (time.mktime(time.localtime()) - start) < 10.0:
+            time.sleep(0.250)
 
     fetchAndPublishAll(client)
 
-    client.loop_stop()
-    client.disconnect()
+    if not DEBUG:
+        client.loop_stop()
+        client.disconnect()
 except:
     traceback.print_exc()
     sys.exit(-1)
